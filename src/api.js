@@ -1,3 +1,4 @@
+// src/api.js
 const BASE_URL = "https://archive.org/advancedsearch.php";
 
 const parseDuration = (durationStr) => {
@@ -16,11 +17,9 @@ export const searchDeadShows = async (text, year, month, sortBy = "date asc") =>
   if (text) {
     parts.push(`(title:(${text}) OR venue:(${text}) OR coverage:(${text}))`);
   }
-
   if (year) {
     parts.push(`year:${year}`);
   }
-
   if (month) {
     parts.push(`date:????-${month}-*`);
   }
@@ -32,7 +31,7 @@ export const searchDeadShows = async (text, year, month, sortBy = "date asc") =>
     fl: ["identifier", "title", "date", "downloads", "avg_rating", "year", "runtime", "num_files", "source", "description", "venue", "coverage"].join(","),
     sort: sortBy,
     output: "json",
-    rows: 50,
+    rows: 100, // Increased to ensure we catch alternates
   });
 
   try {
@@ -66,17 +65,38 @@ export const getShowsOnDate = async (month, day, sortBy = "date asc") => {
   }
 };
 
+// SMART GROUPING: Bundles multiple recordings of the same date
 const processResults = (docs) => {
   if (!docs || !Array.isArray(docs)) return [];
   
   const grouped = {};
   docs.forEach(doc => {
+    // Group strictly by Date (YYYY-MM-DD)
     const date = doc.date ? doc.date.split("T")[0] : "Unknown";
-    if (!grouped[doc.identifier]) {
-      grouped[doc.identifier] = { date: date, primary: doc };
+    
+    if (!grouped[date]) {
+      grouped[date] = { 
+        date: date, 
+        // We will store all versions in an array first, then sort them to find primary
+        all_versions: [doc] 
+      };
+    } else {
+      grouped[date].all_versions.push(doc);
     }
   });
-  return Object.values(grouped);
+
+  // Now sort each group to find the best source (Highest Downloads)
+  return Object.values(grouped).map(group => {
+    // Sort descending by downloads
+    group.all_versions.sort((a, b) => (b.downloads || 0) - (a.downloads || 0));
+    
+    // The winner is Primary
+    group.primary = group.all_versions[0];
+    // The rest are alternates
+    group.alternates = group.all_versions.slice(1);
+    
+    return group;
+  });
 };
 
 export const getTracks = async (identifier) => {
@@ -85,7 +105,6 @@ export const getTracks = async (identifier) => {
   const data = await response.json();
   
   const files = data.files.filter(f => f.format === "VBR MP3" && f.title);
-  
   files.sort((a, b) => (parseInt(a.track) || 999) - (parseInt(b.track) || 999));
 
   return files.map(f => ({
