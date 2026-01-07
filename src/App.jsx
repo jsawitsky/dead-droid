@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { searchDeadShows, getShowsOnDate, getTracks } from './api';
 import Player from './Player';
-
+ 
 const Skeleton = () => (
   <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 animate-pulse flex gap-4 w-full">
     <div className="h-12 w-12 bg-gray-700 rounded-full shrink-0"></div>
